@@ -1,0 +1,3 @@
+[submodule "modules/Plack"]
+	path = modules/Plack
+	url = git://github.com/miyagawa/Plack.git

@@ -1,0 +1,62 @@
+PSGI/Plack
+
+*PSGI/Plackとは？
+
+- PSGI = Perl Web Server Gateway Interface Specification
+-- Webサーバとアプリケーションとの間のインタフェイス仕様
+- Plack = PSGIのリファレンス実装
+-- PSGIのいち実装に過ぎない
+-- PSGI != Plack
+
+*PSGI策定の背景
+
+- 各Webアプリケーションフレームワークがバラバラに実装していたWebサーバとのインタフェイスを統一したい
+- そのためには、仕様と実装の区別を明確に行う必要がある。
+-- Python: WSGI
+-- Ruby: Rack
+- そこで、仕様をPSGIとして定め、そのリファレンス実装としてPlackが開発されている。
+- インタフェイス仕様と実装を切り分けることにより、Webアプリケーションフレームワーク実装者は、より本質的な実装に注力できる。
+
+*PSGI仕様概観
+
+ref: http://github.com/miyagawa/psgi-specs/blob/master/PSGI.pod
+
+図
+
+*要するに……
+
+PSGIにおけるアプリケーションとは:
+
++ 環境変数をハッシュとして受け取り、
++ 前述仕様の通り、レスポンスを配列リファレンスで返すコードリファレンス
+
+*Hello World!
+
+- app = coderefを.psgiファイルに定義する
+- plackupを使い、plackを起動する
+
+config/hello_world.psgi
+
+>||
+my $handler = sub {
+    return [
+        200,
+        [ "Content-Type" => "text/plain", "Content-Length" => 11 ],
+        [ "Hello World" ],
+    ];
+};
+||<
+
+plackの起動
+
+>||
+perl -Imodules/Plack/lib modules/Plack/scripts/plackup -app config/hello_world.psgi
+||<
+
+*Hello World (2)
+
++ config/hello_world.psgiをロード。
++ Plack::Loaderにより適切なサーバ実装が選択される。
++- この場合、Plack::Impl::StandAloneが使われる。plackupへの--implオプションで変更可能。
++ Plack::Handlerにapp = coderefがわたされ、アプリケーションが実行される。
+
