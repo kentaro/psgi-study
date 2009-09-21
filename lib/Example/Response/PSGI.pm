@@ -1,17 +1,25 @@
 package Example::Response::PSGI;
-use base qw(Example::Response);
+use base qw(
+    Plack::Response
+    Example::Response
+);
 
-sub result {
-    my $self = shift;
-    [
-        $self->code,
-        [
-            map {
-                $_, $self->headers->header($_);
-            } $self->headers->header_field_names
-        ],
-        [ $self->content ],
-    ];
+use Scalar::Util qw(blessed);
+
+sub result { shift->finalize(@_) }
+sub content {
+    my ($self, $content) = @_;
+
+    if (defined $content) {
+        if (ref($content) eq 'GLOB' || (Scalar::Util::blessed($content) && $content->can('getline'))) {
+            $self->body($content);
+        }
+        else {
+            $self->body([$content]);
+        }
+    }
+
+    $self->body;
 }
 
 !!1;

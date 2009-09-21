@@ -36,7 +36,7 @@ sub run {
        $controller->$action($self);
     my $content = $self->res->content;
 
-    if ($content eq '') {
+    if (!defined $content) {
         my $tmpl_impl = $self->config->param('tmpl_impl') || 'TT';
         my $tmpl_opt  = $self->config->param('tmpl_opt')  || {};
         my $tmpl_ext  = $self->config->param('tmpl_ext')  || 'tt';
@@ -51,7 +51,7 @@ sub run {
         $self->res->content($content);
     }
 
-    $self->res->finalize;
+    $self->res->code(200); # XXX
     $self->res;
 }
 
