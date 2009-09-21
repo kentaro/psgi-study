@@ -1,38 +1,78 @@
-PSGI/Plack
+PSGI/Plack勉強会
 
 *PSGI/Plackとは？
 
 - PSGI = Perl Web Server Gateway Interface Specification
--- Webサーバとアプリケーションとの間のインタフェイス仕様
+-- WebサーバとWebアプリケーションとの間のインタフェイス仕様
 - Plack = PSGIのリファレンス実装
--- PSGIのいち実装に過ぎない
+-- PSGI実装のひとつ(とはいえ、やたら気合いの入った感じになってるけど)
+-- PSGI != Yet Another WAF
 -- PSGI != Plack
 
 *PSGI策定の背景
 
-- 各Webアプリケーションフレームワークがバラバラに実装していたWebサーバとのインタフェイスを統一したい
+- 各Webアプリケーションフレームワークがバラバラに実装していた、WebサーバとWebアプリケーションとのインタフェイスを統一したい。
+-- 車輪の再発明を避ける
+-- 各サーバ間における移植性を高める
 - そのためには、仕様と実装の区別を明確に行う必要がある。
 -- Python: WSGI
 -- Ruby: Rack
-- そこで、仕様をPSGIとして定め、そのリファレンス実装としてPlackが開発されている。
-- インタフェイス仕様と実装を切り分けることにより、Webアプリケーションフレームワーク実装者は、より本質的な実装に注力できる。
+- そこで、仕様としてPSGIが定められ、そのリファレンス実装としてPlackが開発されている。
+- インタフェイス仕様と実装を切り分けることにより、Webアプリケーションフレームワーク開発者は、より本質的な実装に注力できる。
 
-*PSGI仕様概観
+*PSGIプロトコル概略
 
 ref: http://github.com/miyagawa/psgi-specs/blob/master/PSGI.pod
 
-図
+>||
+.------------------------------------------------------------.
+|                        Application                         |
+'------------------------------------------------------------'
+                             |
+.------------------------------------------------------------.
+|                           WAF                              |
+'------------------------------------------------------------'
+                             | passes $app as a coderef
+.------------------------------------------------------------.
+|                    PSGI implementation                     |
+'------------------------------------------------------------'
+         |                   | request as an $env   |
+.------------------. .------------------. .------------------.
+|     mod_perl     | |      FastCGI     | |    Pure  Perl    |
+'------------------' '------------------' '------------------'
+         |                   |                      |
+.------------------------------------------------------------.
+|                         Request                            |
+'------------------------------------------------------------'
+||<
 
-*要するに……
+*PSGIにおけるアプリケーションとは
 
-PSGIにおけるアプリケーションとは:
++ 環境変数（PSGIによる拡張あり）をハッシュとして受け取り、
++ レスポンスをPSGIに定められた形式の配列リファレンスで返す
 
-+ 環境変数をハッシュとして受け取り、
-+ 前述仕様の通り、レスポンスを配列リファレンスで返すコードリファレンス
+という仕様を満たすコードリファレンス（詳細は後述）。
 
-*Hello World!
+*Plack
 
-- app = coderefを.psgiファイルに定義する
+- PSGIのリファレンス実装
+- 現在、以下のバックエンドに対応
+-- Apache2
+-- CGI
+-- Coro
+-- Danga::Socket
+-- FCGI
+-- FCGI
+-- Mojo
+-- Mojo
+-- ReverseHTTP
+-- ServerSimple
+-- Standalone
+-- 今後、GAE, mod_perliteにも対応予定とのこと
+
+*Hello World
+
+- ハンドラ = coderefを.psgiファイルに定義する
 - plackupを使い、plackを起動する
 
 config/hello_world.psgi
@@ -55,8 +95,145 @@ perl -Imodules/Plack/lib modules/Plack/scripts/plackup -app config/hello_world.p
 
 *Hello World (2)
 
+plackupの行っていること:
+
 + config/hello_world.psgiをロード。
 + Plack::Loaderにより適切なサーバ実装が選択される。
 +- この場合、Plack::Impl::StandAloneが使われる。plackupへの--implオプションで変更可能。
-+ Plack::Handlerにapp = coderefがわたされ、アプリケーションが実行される。
++ 選択されたPlack::Impl::*に$handlerがわたされ、アプリケーションが実行される。
 
+*Plackを使ってWAFを作ろう (1)
+
+最低限必要なもの:
+
+- 環境変数を受け取り、レスポンスをPSGI形式で返すコードリファレンス
+- 受け取った環境変数（リクエスト）を元に、あれこれする箇所（WAFの勘所）
+- psgiファイル
+
+*Plackを使ってWAFを作ろう (2)
+
+環境変数を受け取り、レスポンスをPSGI形式なコードリファレンスとしてハンドラ。
+
+>||
+package MyWAF::Handler::PSGI;
+use strict;
+use warnings;
+use Carp qw(croak);
+use UNIVERSAL::require;
+
+sub handler {
+    my ($class, $app) = @_;
+    qroak qq{no such app: $app} if !$app->use;
+    sub {
+        my $env = shift;
+        $app->run($env);
+    };
+}
+
+!!1;
+||<
+
+*Plackを使ってWAFを作ろう (2)
+
+受け取った環境変数（リクエスト）を元に、あれこれする箇所（WAFの勘所）。
+
+>||
+package MyWAF;
+use strict;
+use warnings;
+
+sub run {
+    my ($class, $env) = @_;
+
+    # $envからリクエストオブジェクトを生成
+    # どのコントローラ、アクションにdispatchするかを決定
+    # コントローラ実行
+    # ビューをレンダリング
+
+    return $response->result;
+
+    # レスポンスを以下のような形式の配列リファレンスとして返す
+    # [
+    #     200,
+    #     [
+    #         'Content-Type' => 'text/html',
+    #         # ...
+    #     ],
+    #     [ 'Hello World' ]
+    # ]
+}
+
+!!1;
+||<
+
+*Plackを使ってWAFを作ろう (3)
+
+早速使ってみる。MyAppを作成。
+
+>||
+package MyApp;
+use strict;
+use warnings;
+use base qw(MyWAF);
+
+!!1;
+||<
+
+*Plackを使ってWAFを作ろう (4)
+
+Plackアプリケーションを起動するためのpsgiファイル。
+
+>||
+use MyWAF::Handler::PSGI;
+my $handler = MyWAF::Handler::PSGI->handler('MyApp');
+||<
+
+**Plackを使ってWAFを作ろう (5)
+
+MyAppをCGI上で動作させる。
+
+>||
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Plack::Impl::CGI;
+
+my $app = do 'config/myapp.psgi';
+Plack::Impl::CGI->new->run($app);
+||<
+
+**Plackを使ってWAFを作ろう (6)
+
+MyAppをmod_perl上で動作させる。
+
+>||
+<Locaion />
+  SetHandler  perl-script
+  PerlHandler Plack::Impl::Apache2
+  PerlSetVar  psgi_app /path/to/myapp.psgi
+</Location>
+||<
+
+**Plackを使ってWAFを作ろう (7)
+
+続きはGitHubで。
+
+- http://github.com/kentaro/psgi-example
+
+**RidgeのPSGI/Plack対応
+
+id:hakobe932が対応つつあります。
+
+- Ridgeのplackブランチ
+
+**まとめ
+
+- PSGIの仕様はシンプル。
+- Plackという実装もあるので、サーバ実装の差異にまつわる面倒なことをお任せできて、簡単にWAFを作れる。
+- お膳立ては整っているので、いけてるWAFにするのはWAF開発者のセンス次第。
+
+**参考文献
+
+- http://github.com/miyagawa/psgi-specs
+- http://tokuhirom.github.com/talks/20090910-yapcasia2009-psgi-plack/#15
+- http://blog.eorzea.asia/2009/09/post_63.html
